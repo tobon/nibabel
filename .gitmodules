@@ -13,3 +13,6 @@
 [submodule "nibabel-data/parrec_oblique"]
 	path = nibabel-data/parrec_oblique
 	url = https://github.com/grlee77/parrec_oblique.git
+[submodule "nibabel-data/metaimage-samples"]
+	path = nibabel-data/metaimage-samples
+	url = https://gtobon@bitbucket.org/gtobon/metaimage-samples.git
