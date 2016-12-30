@@ -36,7 +36,7 @@ from .. import (AnalyzeImage, Spm99AnalyzeImage, Spm2AnalyzeImage,
                 Nifti1Pair, Nifti1Image, Nifti2Pair, Nifti2Image,
                 MGHImage, Minc1Image, Minc2Image)
 from ..spatialimages import SpatialImage
-from .. import minc1, minc2, parrec
+from .. import minc1, minc2, parrec, metaimage
 
 from nose import SkipTest
 from nose.tools import (assert_true, assert_false, assert_raises,
@@ -51,6 +51,7 @@ from .test_helpers import bytesio_round_trip, assert_data_similar
 from .test_minc1 import EXAMPLE_IMAGES as MINC1_EXAMPLE_IMAGES
 from .test_minc2 import EXAMPLE_IMAGES as MINC2_EXAMPLE_IMAGES
 from .test_parrec import EXAMPLE_IMAGES as PARREC_EXAMPLE_IMAGES
+from .test_metaimage import EXAMPLE_IMAGES as METAIMAGE_EXAMPLE_IMAGES
 
 
 class GenericImageAPI(ValidateAPI):
@@ -453,3 +454,16 @@ class TestMGHAPI(ImageHeaderAPI):
     has_scaling = True
     can_save = True
     standard_extension = '.mgh'
+
+
+class TestMetaImageAPI(LoadImageAPI):
+
+    def __init__(self):
+        """ Skip all MetaImage I/O tests for now """
+        raise SkipTest("TODO: MetaImage loader not implemented yet")
+    
+    def loader(self, fname):
+        return metaimage.load(fname)
+
+    klass = metaimage.MetaImage
+    example_images = METAIMAGE_EXAMPLE_IMAGES
