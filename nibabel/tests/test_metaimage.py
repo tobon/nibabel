@@ -10,7 +10,7 @@
 from os.path import join as pjoin, dirname
 import numpy as np
 from nose.tools import raises
-from ..metaimage import MetaImage
+from ..metaimage import MetaImageImage
 
 DATA_PATH = pjoin(dirname(__file__), 'data')
 
@@ -215,7 +215,7 @@ EXAMPLE_IMAGES = [
 
 @raises(FileNotFoundError)
 def test_missing_raw():
-    MetaImage.load(pjoin(DATA_PATH, "MetaImageError.mhd"))
+    MetaImageImage.load(pjoin(DATA_PATH, "MetaImageError.mhd"))
 
 
 # TODO: TEST case for uncompressed data with compressed extension

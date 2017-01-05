@@ -457,13 +457,9 @@ class TestMGHAPI(ImageHeaderAPI):
 
 
 class TestMetaImageAPI(LoadImageAPI):
-
-    def __init__(self):
-        """ Skip all MetaImage I/O tests for now """
-        raise SkipTest("TODO: MetaImage loader not implemented yet")
     
     def loader(self, fname):
         return metaimage.load(fname)
 
-    klass = metaimage.MetaImage
+    klass = metaimage.MetaImageImage
     example_images = METAIMAGE_EXAMPLE_IMAGES
