@@ -22,6 +22,8 @@ import warnings
 from os.path import join as pjoin, dirname
 import numpy as np
 import zlib
+from operator import mul
+from functools import reduce
 from .keywordonly import kw_only_meth
 from .spatialimages import SpatialHeader, SpatialImage
 from .volumeutils import array_from_file
@@ -111,18 +113,24 @@ class MetaImageHeader(SpatialHeader):
             linekey = lineparts[0].strip()
             linevalue = MetaImageHeader.delim.join(lineparts[1:]).strip()
             hdrmap[linekey] = linevalue
-            if linekey == 'ElementDataFile' and linevalue == 'LOCAL':
-                imgoffset = fileobj.tell()
-                break
 
-        if 'HeaderSize' in hdrmap:
-            del hdrmap['HeaderSize']
+            # Store header size if available
+            if linekey == 'HeaderSize':
+                imgoffset = int(linevalue)
+            
+            if linekey == 'ElementDataFile' and linevalue == 'LOCAL':
+                # Infer pixel data offset, if possible
+                if 'HeaderSize' not in hdrmap:
+                    imgoffset = fileobj.tell()
+                break
             
         # Check for unsupported data
         if hdrmap.get('ObjectType', 'Image') != 'Image':
             raise MetaImageError("Unsupported object type %s" % hdrmap['ObjectType'])
-                
+
         # take out header elements with a required format
+        if 'HeaderSize' in hdrmap:
+            del hdrmap['HeaderSize']
         data_dtype = '<'
         if hdrmap.pop('ElementByteOrderMSB', 'False') == 'True':
             data_dtype = '>'
@@ -337,6 +345,14 @@ class MetaImageImage(SpatialImage):
 
         # Load image pixel data
         with filemap['image'].get_prepare_fileobj() as imgfile:
+            # Handle case where provided header size is zero
+            # Specify –1 to have MetaImage calculate the header size based on the assumption that the data occurs at the end of the file.
+            pixeloffset = hdr.get_data_offset()
+            if pixeloffset < 0:
+                imgfile.seek(0, 2)
+                n_bytes = reduce(mul, hdr.get_data_shape()) * hdr.get_data_dtype().itemsize
+                pixeloffset = imgfile.tell() - n_bytes
+            
             if hdr.get('CompressedData', 'False') == 'True':
                 pixeldata = np.ndarray(hdr.get_data_shape(),
                                        hdr.get_data_dtype(),
@@ -347,7 +363,7 @@ class MetaImageImage(SpatialImage):
                 pixeldata = array_from_file(hdr.get_data_shape(),
                                             hdr.get_data_dtype(),
                                             imgfile,
-                                            hdr.get_data_offset(),
+                                            pixeloffset,
                                             'F', False)
 
         return klass(pixeldata, hdr.get_affine(), header=hdr,
