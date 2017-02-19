@@ -11,8 +11,12 @@ from os.path import join as pjoin, dirname
 import numpy as np
 from nose.tools import raises
 from ..metaimage import MetaImageImage
+from .nibabel_data import get_nibabel_data, needs_nibabel_data
+from nose.tools import assert_equal
+from nose.tools import assert_true
 
 DATA_PATH = pjoin(dirname(__file__), 'data')
+BIGDATA_PATH = pjoin(get_nibabel_data(), 'metaimage-samples')
 
 EXAMPLE_IMAGES = [
     # Example images come from Kitware's Insight Toolkit example
@@ -134,57 +138,57 @@ EXAMPLE_IMAGES = [
         is_proxy=False
     ),
 
-    # dict(
-    #     fname=pjoin(DATA_PATH, 'Small Ramp Volume List.mhd'),
-    #     shape=(6, 6, 6),
-    #     dtype=np.uint8,
-    #     affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
-    #     zooms=(1., 1., 1.),
-    #     data_summary=dict(
-    #         min=0,
-    #         max=215,
-    #         mean=107.5),
-    #     is_proxy=False
-    # ),
+    dict(
+        fname=pjoin(DATA_PATH, 'Small Ramp Volume List.mhd'),
+        shape=(6, 6, 6),
+        dtype=np.uint8,
+        affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
+        zooms=(1., 1., 1.),
+        data_summary=dict(
+            min=0,
+            max=215,
+            mean=107.5),
+        is_proxy=False
+    ),
+    
+    dict(
+        fname=pjoin(DATA_PATH, 'Small Ramp Volume Reg Ex.mhd'),
+        shape=(6, 6, 6),
+        dtype=np.uint8,
+        affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
+        zooms=(1., 1., 1.),
+        data_summary=dict(
+            min=0,
+            max=215,
+            mean=107.5),
+        is_proxy=False
+    ),
 
-    # dict(
-    #     fname=pjoin(DATA_PATH, 'Small Ramp Volume Reg Ex.mhd'),
-    #     shape=(6, 6, 6),
-    #     dtype=np.uint8,
-    #     affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
-    #     zooms=(1., 1., 1.),
-    #     data_summary=dict(
-    #         min=0,
-    #         max=215,
-    #         mean=107.5),
-    #     is_proxy=False
-    # ),
+    dict(
+        fname=pjoin(DATA_PATH, 'SmallRampVolumeList.mhd'),
+        shape=(6, 6, 6),
+        dtype=np.uint8,
+        affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
+        zooms=(1., 1., 1.),
+        data_summary=dict(
+            min=0,
+            max=215,
+            mean=107.5),
+        is_proxy=False
+    ),
 
-    # dict(
-    #     fname=pjoin(DATA_PATH, 'SmallRampVolumeList.mhd'),
-    #     shape=(6, 6, 6),
-    #     dtype=np.uint8,
-    #     affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
-    #     zooms=(1., 1., 1.),
-    #     data_summary=dict(
-    #         min=0,
-    #         max=215,
-    #         mean=107.5),
-    #     is_proxy=False
-    # ),
-
-    # dict(
-    #     fname=pjoin(DATA_PATH, 'SmallRampVolumeRegEx.mhd'),
-    #     shape=(6, 6, 6),
-    #     dtype=np.uint8,
-    #     affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
-    #     zooms=(1., 1., 1.),
-    #     data_summary=dict(
-    #         min=0,
-    #         max=215,
-    #         mean=107.5),
-    #     is_proxy=False
-    # ),
+    dict(
+        fname=pjoin(DATA_PATH, 'SmallRampVolumeRegEx.mhd'),
+        shape=(6, 6, 6),
+        dtype=np.uint8,
+        affine=np.array([[-1,0,0,0], [0,-1,0,0], [0,0,1,0], [0,0,0,1]]),
+        zooms=(1., 1., 1.),
+        data_summary=dict(
+            min=0,
+            max=215,
+            mean=107.5),
+        is_proxy=False
+    ),
 
     dict(
         fname=pjoin(DATA_PATH, 'ramp.mhd'),
@@ -217,6 +221,10 @@ EXAMPLE_IMAGES = [
 def test_missing_raw():
     MetaImageImage.load(pjoin(DATA_PATH, "MetaImageError.mhd"))
 
-
+@needs_nibabel_data('metaimage-samples')
+def test_load_head():
+    img = MetaImageImage.load(pjoin(BIGDATA_PATH, 'HeadMRVolume.mhd'))
+    assert_equal(img.shape, (48, 62, 42))
+    
 # TODO: TEST case for uncompressed data with compressed extension
-        
+
