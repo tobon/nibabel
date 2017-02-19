@@ -22,6 +22,7 @@ import warnings
 from os.path import join as pjoin, dirname
 import numpy as np
 import zlib
+import re
 from operator import mul
 from functools import reduce
 from .keywordonly import kw_only_meth
@@ -135,7 +136,7 @@ class MetaImageHeader(SpatialHeader):
         if hdrmap.pop('ElementByteOrderMSB', 'False') == 'True':
             data_dtype = '>'
         data_dtype += klass.avail_types.get(hdrmap.pop('ElementType','MET_FLOAT'), np.float32)
-        data_shape = tuple([int(i) for i in hdrmap.pop('DimSize', '0').split()])
+        data_shape = klass.parse_shape(hdrmap.pop('DimSize', '0'))
         data_zooms = tuple([float(i) for i in
                             hdrmap.pop('ElementSpacing',' '.join(('1',)*len(data_shape))).split()])
         data_channels = int(hdrmap.pop('ElementNumberOfChannels','1'))
@@ -146,6 +147,10 @@ class MetaImageHeader(SpatialHeader):
                      elementNumberOfChannels=data_channels,
                      pixelDataOffset=imgoffset, extras=hdrmap)
 
+    @classmethod
+    def parse_shape(klass, hdrtext):
+        return tuple([int(i) for i in hdrtext.split()])
+    
     def copy(self):
         """ Return a deep copy of this instance """
         return from_header(self)
@@ -287,6 +292,7 @@ class MetaImageImage(SpatialImage):
         
         # Image object is pointed to by the header file
         with file_map['header'].get_prepare_fileobj('rb') as hdrfile:
+            volshape = None
             for line in hdrfile:
                 # Separate into key,value pair
                 lineparts = asstr(line).split(MetaImageHeader.delim)
@@ -295,20 +301,49 @@ class MetaImageImage(SpatialImage):
                 linekey = lineparts[0].strip()
                 linevalue = MetaImageHeader.delim.join(lineparts[1:]).strip()
 
+                # Store shape
+                if linekey == 'DimSize':
+                    volshape = MetaImageHeader.parse_shape(linevalue)
+                
                 # Determine where pixel data is stored
                 if linekey == 'ElementDataFile':
                     if linevalue == 'LOCAL':
                         file_map['image'] = FileHolder(filename=filespec, pos=hdrfile.tell())
                         break
+                    elif linevalue == 'LIST':
+                        if volshape is None or len(volshape) == 0:
+                            raise MetaImageError('No pixel matrix shape found')
+                        file_map['image'] = [FileHolder(filename=klass._relative_path_abs(asstr(hdrfile.fobj.readline().strip()), filespec)) for i in range(volshape[-1])]
+                    elif klass._is_regex(asstr(linevalue)):
+                        file_map['image'] = [FileHolder(filename=klass._relative_path_abs(i, filespec)) for i in klass._regex_to_list(asstr(linevalue))]
                     else:
-                        # Find file with relative paths, if necessary
-                        relpath = dirname(filespec)
-                        modpath = pjoin(relpath, linevalue)
-                        file_map['image'] = FileHolder(filename=modpath)
+                        file_map['image'] = FileHolder(filename=klass._relative_path_abs(linevalue, filespec))
 
-        assert 'header' in file_map
-        assert 'image' in file_map
+        if 'image' not in file_map:
+            raise MetaImageError('No pixel data referenced in header file')
         return file_map
+
+    @classmethod
+    def _relative_path_abs(klass, imgfilespec, fromfilespec):
+        # Find file with relative paths, if necessary
+        relpath = dirname(fromfilespec)
+        return pjoin(relpath, imgfilespec)
+
+    @classmethod
+    def _regex(klass):
+        return '(.+)\s+(\d+)\s+(\d+)\s+(\d+)'
+    
+    @classmethod
+    def _is_regex(klass, filetext):
+        return bool( re.search(klass._regex(), filetext) )
+
+    @classmethod
+    def _regex_to_list(klass, regex):
+        match = re.search(klass._regex(), regex)
+        toret = []
+        for i in range(int(match.group(2)), int(match.group(3))+1, int(match.group(4))):
+            toret.append(match.group(1) % i)
+        return toret
                         
     @classmethod
     @kw_only_meth(1)
@@ -344,33 +379,55 @@ class MetaImageImage(SpatialImage):
             hdr = klass.header_class.from_fileobj(hdrfile)
 
         # Load image pixel data
-        with filemap['image'].get_prepare_fileobj() as imgfile:
-            # Handle case where provided header size is zero
-            # Specify –1 to have MetaImage calculate the header size based on the assumption that the data occurs at the end of the file.
-            pixeloffset = hdr.get_data_offset()
-            if pixeloffset < 0:
-                imgfile.seek(0, 2)
-                n_bytes = reduce(mul, hdr.get_data_shape()) * hdr.get_data_dtype().itemsize
-                pixeloffset = imgfile.tell() - n_bytes
-            
-            if hdr.get('CompressedData', 'False') == 'True':
-                pixeldata = np.ndarray(hdr.get_data_shape(),
-                                       hdr.get_data_dtype(),
-                                       buffer=zlib.decompress(imgfile.read()),
-                                       order='F')
-                pixeldata.flags.writeable = True
+        islist = type(filemap['image']) is list or type(filemap['image']) is tuple
+        if hdr.get('CompressedData', 'False') == 'True':
+            if islist:
+                pixeldata = np.zeros(hdr.get_data_shape(), dtype=hdr.get_data_dtype())
+                for i in range(pixeldata.shape[-1]):
+                    with filemap['image'][i].get_prepare_fileobj('rb') as imgfile:
+                        pixeldata[...,i] = np.ndarray(hdr.get_data_shape()[:-1],
+                                                      hdr.get_data_dtype(),
+                                                      buffer=zlib.decompress(imgfile.read()),
+                                                      order='F')
             else:
-                pixeldata = array_from_file(hdr.get_data_shape(),
-                                            hdr.get_data_dtype(),
-                                            imgfile,
-                                            pixeloffset,
-                                            'F', False)
-
+                with filemap['image'].get_prepare_fileobj('rb') as imgfile:
+                    pixeldata = np.ndarray(hdr.get_data_shape(),
+                                           hdr.get_data_dtype(),
+                                           buffer=zlib.decompress(imgfile.read()),
+                                           order='F')
+            pixeldata.flags.writeable = True
+        else:
+            if islist:
+                pixeldata = np.zeros(hdr.get_data_shape(), dtype=hdr.get_data_dtype())
+                for i in range(pixeldata.shape[-1]):
+                    with filemap['image'][i].get_prepare_fileobj('rb') as imgfile:
+                        pixeldata[...,i] = array_from_file(hdr.get_data_shape()[:-1],
+                                                           hdr.get_data_dtype(),
+                                                           imgfile,
+                                                           klass._determine_pixel_offset(hdr, imgfile),
+                                                           'F', False)
+            else:
+                with filemap['image'].get_prepare_fileobj('rb') as imgfile:
+                    pixeldata = array_from_file(hdr.get_data_shape(),
+                                                hdr.get_data_dtype(),
+                                                imgfile,
+                                                klass._determine_pixel_offset(hdr, imgfile),
+                                                'F', False)
+                
         return klass(pixeldata, hdr.get_affine(), header=hdr,
-                     extra=None, file_map=filemap)
-        
-        
-        
+                     extra=None, file_map=filemap)                
+
+    @classmethod
+    def _determine_pixel_offset(klass, hdr, imgfileobj):
+        # Handle case where provided header size is less than zero
+        # Specify –1 to have MetaImage calculate the header size based on the assumption that the data occurs at the end of the file.
+        pixeloffset = hdr.get_data_offset()
+        if pixeloffset < 0:
+            prevpos = imgfileobj.tell()
+            imgfileobj.seek(0, 2)
+            n_bytes = reduce(mul, hdr.get_data_shape()) * hdr.get_data_dtype().itemsize
+            pixeloffset = imgfileobj.tell() - n_bytes
+        return pixeloffset
 
     load = from_filename
 
